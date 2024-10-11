@@ -74,81 +74,64 @@ namespace WebApiWithRoleAuthentication.Controllers
             return Unauthorized();
         }
 
-        //[HttpPost("registerAutomaticallyAndLoginAutomatically")]
-        //public async Task<IActionResult> RegisterAutomaticallyAndLoginAutomatically([FromBody] Register model)
-        //{
-        //    // Check if the username is already taken
-        //    var existingUser = await _userManager.FindByNameAsync(model.Username);
-        //    if (existingUser != null)
-        //    {
-        //        return BadRequest(new { Message = "Username is already taken" });
-        //    }
-
-        //    // Register the user
-        //    var user = new IdentityUser { UserName = model.Username, Email = model.Email };
-        //    var result = await _userManager.CreateAsync(user, model.Password);
-
-        //    if (result.Succeeded)
-        //    {
-        //        // Optionally add the user to a role
-        //        // await _userManager.AddToRoleAsync(user, "User");
-
-        //        // Automatically log in the user and generate JWT token
-        //        var authClaims = new List<Claim>
-        //        {
-        //            new Claim(JwtRegisteredClaimNames.Sub, user.UserName!),
-        //            new Claim(JwtRegisteredClaimNames.Jti, Guid.NewGuid().ToString())
-        //        };
-
-        //        var token = new JwtSecurityToken(
-        //            issuer: _configuration["Jwt:Issuer"],
-        //            expires: DateTime.Now.AddMinutes(double.Parse(_configuration["Jwt:ExpiryMinutes"]!)),
-        //            claims: authClaims,
-        //            signingCredentials: new SigningCredentials(new SymmetricSecurityKey(Encoding.UTF8.GetBytes(_configuration["Jwt:Key"]!)),
-        //            SecurityAlgorithms.HmacSha256));
-
-        //        return Ok(new { Token = new JwtSecurityTokenHandler().WriteToken(token), UserId = user.Id });
-        //    }
-
-        //    return BadRequest(result.Errors);
-        //}
-
-
-
         [HttpPost("registerAutomaticallyAndLoginAutomatically")]
         public async Task<IActionResult> RegisterAutomaticallyAndLoginAutomatically([FromBody] RegisterUser model)
         {
-            // Check if the user already exists
-            var existingUser = await _userManager.FindByEmailAsync(model.Email);
+            // Check if the email exists using StudentServiceConsumer
+            var isValid = await _studentServiceConsumer.IsValidLoginAsync(model.Email, model.Password);
 
-            if (existingUser != null)
+            if (isValid)
             {
-                // Login if user already exists
-                if (await _userManager.CheckPasswordAsync(existingUser, model.Password))
+                // Check if the user already exists in Identity
+                var existingUser = await _userManager.FindByEmailAsync(model.Email);
+
+                if (existingUser != null)
                 {
-                    var token = await GenerateJwtToken(existingUser); // Method to generate token
-                    return Ok(new { Token = token, UserId = existingUser.Id });
+                    // If the user exists, validate their password and log them in
+                    if (await _userManager.CheckPasswordAsync(existingUser, model.Password))
+                    {
+                        var token = await GenerateJwtToken(existingUser); // Generate the JWT token
+                        return Ok(new { Token = token, UserId = existingUser.Id });
+                    }
+
+                    return BadRequest(new { Message = "Invalid credentials" });
                 }
-                return BadRequest(new { Message = "Invalid credentials" });
+
+                // If the user doesn't exist, create a new IdentityUser
+                var newUser = new IdentityUser { Email = model.Email, UserName = model.Email };
+                var createResult = await _userManager.CreateAsync(newUser, model.Password);
+
+                if (createResult.Succeeded)
+                {
+                    // Ensure the "User" role exists in the system
+                    if (!await _roleManager.RoleExistsAsync("User"))
+                    {
+                        var roleResult = await _roleManager.CreateAsync(new IdentityRole("User"));
+                        if (!roleResult.Succeeded)
+                        {
+                            return BadRequest(new { Message = "Failed to create 'User' role" });
+                        }
+                    }
+
+                    // Assign the "User" role to the newly created user
+                    var roleAssignResult = await _userManager.AddToRoleAsync(newUser, "User");
+
+                    if (!roleAssignResult.Succeeded)
+                    {
+                        return BadRequest(new { Message = "Failed to assign 'User' role" });
+                    }
+
+                    // Generate and return the JWT token for the new user
+                    var token = await GenerateJwtToken(newUser); // Method to generate token
+                    return Ok(new { Token = token, UserId = newUser.Id });
+                }
+
+                // Return errors if the user creation failed
+                return BadRequest(createResult.Errors);
             }
 
-            // Register the user
-            var user = new IdentityUser { Email = model.Email, UserName = model.Email }; // Use email as username
-            var result = await _userManager.CreateAsync(user, model.Password);
-
-            if (result.Succeeded)
-            {
-                // Assign the "User" role automatically
-                await _userManager.AddToRoleAsync(user, "User");
-
-                // Automatically log in the user and generate JWT token
-                var token = await GenerateJwtToken(user); // Method to generate token
-
-                // Return token and user information
-                return Ok(new { Token = token, UserId = user.Id });
-            }
-
-            return BadRequest(result.Errors);
+            // Return an error if the StudentService validation failed
+            return BadRequest(new { Message = "Invalid email or password in StudentService." });
         }
 
         // Helper method to generate the JWT token
@@ -160,7 +143,7 @@ namespace WebApiWithRoleAuthentication.Controllers
         new Claim(JwtRegisteredClaimNames.Jti, Guid.NewGuid().ToString())
     };
 
-            // Get the user roles and add them to claims
+            // Get the user roles and add them to the claims
             var userRoles = await _userManager.GetRolesAsync(user);
             authClaims.AddRange(userRoles.Select(role => new Claim(ClaimTypes.Role, role)));
 
@@ -177,132 +160,19 @@ namespace WebApiWithRoleAuthentication.Controllers
         }
 
 
+        
 
 
 
-        //3
 
 
-        //[HttpPost("registerAutomaticallyAndLoginAutomatically")]
-        //public async Task<IActionResult> RegisterAutomaticallyAndLoginAutomatically([FromBody] RegisterUser model)
-        //{
-        //    // Check if the user exists in the authentication service
-        //    var existingUser = await _userManager.FindByEmailAsync(model.Email);
-        //    if (existingUser != null)
-        //    {
-        //        // User already exists, perform login and return token
-        //        var loginUser = await _userManager.FindByEmailAsync(model.Email);
-        //        if (loginUser != null && await _userManager.CheckPasswordAsync(loginUser, model.Password))
-        //        {
-        //            // Generate JWT token for existing user
-        //            var authClaims = new List<Claim>
-        //    {
-        //        new Claim(JwtRegisteredClaimNames.Sub, loginUser.Email!), // Use Email as Subject
-        //        new Claim(JwtRegisteredClaimNames.Jti, Guid.NewGuid().ToString())
-        //    };
 
-        //            var token = new JwtSecurityToken(
-        //                issuer: _configuration["Jwt:Issuer"],
-        //                expires: DateTime.Now.AddMinutes(double.Parse(_configuration["Jwt:ExpiryMinutes"]!)),
-        //                claims: authClaims,
-        //                signingCredentials: new SigningCredentials(new SymmetricSecurityKey(Encoding.UTF8.GetBytes(_configuration["Jwt:Key"]!)),
-        //                SecurityAlgorithms.HmacSha256));
 
-        //            return Ok(new
-        //            {
-        //                Token = new JwtSecurityTokenHandler().WriteToken(token),
-        //                UserId = loginUser.Id,
-        //                Message = "User logged in successfully"
-        //            });
-        //        }
-        //        return Unauthorized(new { Message = "Invalid login credentials" });
-        //    }
 
-        //    // Check if the credentials are valid with StudentServiceConsumer
-        //    bool isValid = await _studentServiceConsumer.IsValidLoginAsync(model.Email, model.Password);
-        //    if (!isValid)
-        //    {
-        //        return Unauthorized(new { Message = "Invalid credentials with external system" });
-        //    }
 
-        //    // Register the user if they don't exist and credentials are valid
-        //    var newUser = new IdentityUser { UserName = model.Email, Email = model.Email };
-        //    var result = await _userManager.CreateAsync(newUser, model.Password);
 
-        //    if (result.Succeeded)
-        //    {
-        //        // Optionally assign a role if needed
-        //        // await _userManager.AddToRoleAsync(newUser, "User");
 
-        //        // Get student details from external service
-        //        var (codeUIR, firstName, lastName) = await _studentServiceConsumer.GetStudentDetailsAsync(model.Email, model.Password);
 
-        //        // Generate JWT token for newly registered user
-        //        var authClaims = new List<Claim>
-        //{
-        //    new Claim(JwtRegisteredClaimNames.Sub, newUser.Email!), // Use Email as Subject
-        //    new Claim(JwtRegisteredClaimNames.Jti, Guid.NewGuid().ToString())
-        //};
-
-        //        var token = new JwtSecurityToken(
-        //            issuer: _configuration["Jwt:Issuer"],
-        //            expires: DateTime.Now.AddMinutes(double.Parse(_configuration["Jwt:ExpiryMinutes"]!)),
-        //            claims: authClaims,
-        //            signingCredentials: new SigningCredentials(new SymmetricSecurityKey(Encoding.UTF8.GetBytes(_configuration["Jwt:Key"]!)),
-        //            SecurityAlgorithms.HmacSha256));
-
-        //        // Return token, user ID, and student details
-        //        return Ok(new
-        //        {
-        //            Token = new JwtSecurityTokenHandler().WriteToken(token),
-        //            UserId = newUser.Id,
-        //            CodeUIR = codeUIR,
-        //            FirstName = firstName,
-        //            LastName = lastName,
-        //            Message = "User registered and logged in successfully"
-        //        });
-        //    }
-
-        //    return BadRequest(result.Errors);
-        //}
-
-        //2
-
-        //[HttpPost("registerAutomaticallyAndLoginAutomaticallytwo")]
-        //public async Task<IActionResult> RegisterAutomaticallyAndLoginAutomaticallytwo([FromBody] RegisterUser model)
-        //{
-        //    // Check if the email is already taken
-        //    var existingUser = await _userManager.FindByEmailAsync(model.Email);
-        //    if (existingUser != null)
-        //    {
-        //        return BadRequest(new { Message = "Email is already taken" });
-        //    }
-
-        //    // Register the user
-        //    var user = new IdentityUser { Email = model.Email, UserName = model.Email }; // Use Email as Username
-        //    var result = await _userManager.CreateAsync(user, model.Password);
-
-        //    if (result.Succeeded)
-        //    {
-        //        // Automatically log in the user and generate JWT token
-        //        var authClaims = new List<Claim>
-        //        {
-        //            new Claim(JwtRegisteredClaimNames.Sub, user.Email!), // Use Email as Subject
-        //            new Claim(JwtRegisteredClaimNames.Jti, Guid.NewGuid().ToString())
-        //        };
-
-        //        var token = new JwtSecurityToken(
-        //            issuer: _configuration["Jwt:Issuer"],
-        //            expires: DateTime.Now.AddMinutes(double.Parse(_configuration["Jwt:ExpiryMinutes"]!)),
-        //            claims: authClaims,
-        //            signingCredentials: new SigningCredentials(new SymmetricSecurityKey(Encoding.UTF8.GetBytes(_configuration["Jwt:Key"]!)),
-        //            SecurityAlgorithms.HmacSha256));
-
-        //        return Ok(new { Token = new JwtSecurityTokenHandler().WriteToken(token), UserId = user.Id });
-        //    }
-
-        //    return BadRequest(result.Errors);
-        //}
         [HttpPost("add-role")]
         [Authorize(Roles = "Admin")]
         public async Task<IActionResult> AddRole([FromBody] string role)
@@ -341,42 +211,7 @@ namespace WebApiWithRoleAuthentication.Controllers
         }
 
 
-        //1
-        //[HttpPost("registerAutomaticallyAndLoginAutomatically")]
-        //public async Task<IActionResult> RegisterAutomaticallyAndLoginAutomatically([FromBody] RegisterUser model)
-        //{
-        //    // Check if the email is already taken
-        //    var existingUser = await _userManager.FindByEmailAsync(model.Email);
-        //    if (existingUser != null)
-        //    {
-        //        return BadRequest(new { Message = "Email is already taken" });
-        //    }
-
-        //    // Register the user
-        //    var user = new IdentityUser { Email = model.Email, UserName = model.Email }; // Use Email as Username
-        //    var result = await _userManager.CreateAsync(user, model.Password);
-
-        //    if (result.Succeeded)
-        //    {
-        //        // Automatically log in the user and generate JWT token
-        //        var authClaims = new List<Claim>
-        //        {
-        //            new Claim(JwtRegisteredClaimNames.Sub, user.Email!), // Use Email as Subject
-        //            new Claim(JwtRegisteredClaimNames.Jti, Guid.NewGuid().ToString())
-        //        };
-
-        //        var token = new JwtSecurityToken(
-        //            issuer: _configuration["Jwt:Issuer"],
-        //            expires: DateTime.Now.AddMinutes(double.Parse(_configuration["Jwt:ExpiryMinutes"]!)),
-        //            claims: authClaims,
-        //            signingCredentials: new SigningCredentials(new SymmetricSecurityKey(Encoding.UTF8.GetBytes(_configuration["Jwt:Key"]!)),
-        //            SecurityAlgorithms.HmacSha256));
-
-        //        return Ok(new { Token = new JwtSecurityTokenHandler().WriteToken(token), UserId = user.Id });
-        //    }
-
-        //    return BadRequest(result.Errors);
-        //}
+    
 
     }
 }
