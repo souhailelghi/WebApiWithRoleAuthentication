@@ -1,4 +1,4 @@
-﻿namespace StudentConsumerMicroservice.Models
+﻿namespace WebApiWithRoleAuthentication.Models
 {
     public class StudentDetailsResponse
     {

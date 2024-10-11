@@ -2,7 +2,7 @@ using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.IdentityModel.Tokens;
-using StudentConsumerMicroservice.Services;
+using WebApiWithRoleAuthentication.Services;
 using System.Text;
 using WebApiWithRoleAuthentication.Data;
 using WebApiWithRoleAuthentication.Models;

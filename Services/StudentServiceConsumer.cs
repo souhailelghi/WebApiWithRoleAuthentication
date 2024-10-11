@@ -1,9 +1,9 @@
-﻿using StudentConsumerMicroservice.Models;
+﻿using WebApiWithRoleAuthentication.Models;
 using System.Net.Http;
 using System.Net.Http.Json;
 using System.Threading.Tasks;
 
-namespace StudentConsumerMicroservice.Services
+namespace WebApiWithRoleAuthentication.Services
 {
     public class StudentServiceConsumer
     {
