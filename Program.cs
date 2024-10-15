@@ -75,7 +75,17 @@ builder.Services.AddScoped<AuthService>();
 
 builder.Logging.ClearProviders();
 builder.Logging.AddConsole();
-
+// Add CORS policy
+builder.Services.AddCors(options =>
+{
+    options.AddPolicy("AllowAll",
+        builder =>
+        {
+            builder.AllowAnyOrigin()
+                   .AllowAnyMethod()
+                   .AllowAnyHeader();
+        });
+});
 var app = builder.Build();
 
 // Configure the HTTP request pipeline.
@@ -89,7 +99,8 @@ app.UseHttpsRedirection();
 
 app.UseAuthentication();
 app.UseAuthorization();
-
+// Use the CORS policy
+app.UseCors("AllowAll");
 app.MapControllers();
 
 app.Run();
