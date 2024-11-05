@@ -6,7 +6,7 @@ using Microsoft.EntityFrameworkCore.Migrations;
 namespace WebApiWithRoleAuthentication.Migrations
 {
     /// <inheritdoc />
-    public partial class initDb : Migration
+    public partial class initLogin : Migration
     {
         /// <inheritdoc />
         protected override void Up(MigrationBuilder migrationBuilder)

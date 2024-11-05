@@ -12,8 +12,8 @@ using WebApiWithRoleAuthentication.Data;
 namespace WebApiWithRoleAuthentication.Migrations
 {
     [DbContext(typeof(AppDbContext))]
-    [Migration("20241007115247_initDb")]
-    partial class initDb
+    [Migration("20241105105954_initLogin")]
+    partial class initLogin
     {
         /// <inheritdoc />
         protected override void BuildTargetModel(ModelBuilder modelBuilder)
