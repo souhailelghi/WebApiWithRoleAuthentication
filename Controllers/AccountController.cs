@@ -29,6 +29,53 @@ namespace WebApiWithRoleAuthentication.Controllers
 
         }
 
+
+        [HttpGet("get-username/{id}")]
+        public async Task<IActionResult> GetUsernameById(string id)
+        {
+            var user = await _userManager.FindByIdAsync(id);
+            if (user == null)
+            {
+                return NotFound(new { Message = "User not found" });
+            }
+            return Ok(new { Username = user.UserName });
+        }
+
+
+        //[HttpPost("registerAdmin")]
+        //public async Task<IActionResult> RegisterAdmin([FromBody] Register model)
+        //{
+        //    // Check if the "Admin" role exists; create it if it doesn't
+        //    if (!await _roleManager.RoleExistsAsync("Admin"))
+        //    {
+        //        var roleResult = await _roleManager.CreateAsync(new IdentityRole("Admin"));
+        //        if (!roleResult.Succeeded)
+        //        {
+        //            return BadRequest(new { Message = "Failed to create 'Admin' role" });
+        //        }
+        //    }
+
+        //    // Create the new admin user
+        //    var adminUser = new IdentityUser { UserName = model.Username, Email = model.Email };
+        //    var result = await _userManager.CreateAsync(adminUser, model.Password);
+
+        //    if (result.Succeeded)
+        //    {
+        //        // Assign the "Admin" role to the user
+        //        var roleAssignResult = await _userManager.AddToRoleAsync(adminUser, "Admin");
+        //        if (!roleAssignResult.Succeeded)
+        //        {
+        //            return BadRequest(new { Message = "Failed to assign 'Admin' role" });
+        //        }
+
+        //        // Optionally generate a JWT token for the new admin user
+        //        var token = await GenerateJwtToken(adminUser);
+        //        return Ok(new { Message = "Admin registered successfully", Token = token });
+        //    }
+
+        //    return BadRequest(result.Errors);
+        //}
+
         [HttpPost("registerAdmin")]
         public async Task<IActionResult> RegisterAdmin([FromBody] Register model)
         {
@@ -55,13 +102,38 @@ namespace WebApiWithRoleAuthentication.Controllers
                     return BadRequest(new { Message = "Failed to assign 'Admin' role" });
                 }
 
-                // Optionally generate a JWT token for the new admin user
-                var token = await GenerateJwtToken(adminUser);
-                return Ok(new { Message = "Admin registered successfully", Token = token });
+                // Generate claims and a JWT token for the new admin user
+                var authClaims = new List<Claim>
+        {
+            new Claim(JwtRegisteredClaimNames.Sub, adminUser.Email!),
+            new Claim(JwtRegisteredClaimNames.Jti, Guid.NewGuid().ToString()),
+            new Claim(ClaimTypes.Name, adminUser.UserName!),
+            new Claim("UserId", adminUser.Id)
+        };
+
+                authClaims.Add(new Claim(ClaimTypes.Role, "Admin"));
+
+                var token = new JwtSecurityToken(
+                    issuer: _configuration["Jwt:Issuer"],
+                    expires: DateTime.Now.AddMinutes(double.Parse(_configuration["Jwt:ExpiryMinutes"]!)),
+                    claims: authClaims,
+                    signingCredentials: new SigningCredentials(
+                        new SymmetricSecurityKey(Encoding.UTF8.GetBytes(_configuration["Jwt:Key"]!)),
+                        SecurityAlgorithms.HmacSha256
+                    )
+                );
+
+                return Ok(new
+                {
+                    Message = "Admin registered successfully",
+                    Token = new JwtSecurityTokenHandler().WriteToken(token),
+                    UserName = adminUser.UserName
+                });
             }
 
             return BadRequest(result.Errors);
         }
+
 
         [HttpPost("register")]
         public async Task<IActionResult> Register([FromBody] Register model)
@@ -82,33 +154,49 @@ namespace WebApiWithRoleAuthentication.Controllers
         //[HttpPost("login")]
         //public async Task<IActionResult> Login([FromBody] Login model)
         //{
-        //    var user = await _userManager.FindByNameAsync(model.Username);
+        //    // Find user by email
+        //    var user = await _userManager.FindByEmailAsync(model.Email);
         //    if (user != null && await _userManager.CheckPasswordAsync(user, model.Password))
         //    {
+        //        // Get the user's roles and check if they have the "Admin" role
         //        var userRoles = await _userManager.GetRolesAsync(user);
-
-        //        var authClaims = new List<Claim>
+        //        if (!userRoles.Contains("Admin"))
         //        {
-        //            new Claim(JwtRegisteredClaimNames.Sub, user.UserName!),
-        //            new Claim(JwtRegisteredClaimNames.Jti, Guid.NewGuid().ToString())
-        //        };
+        //            return Unauthorized(new { message = "Access denied. Only admins can log in." });
+        //        }
+
+        //        // Create claims for the JWT token
+        //        var authClaims = new List<Claim>
+        //{
+        //    new Claim(JwtRegisteredClaimNames.Sub, user.Email!),
+        //    new Claim(JwtRegisteredClaimNames.Jti, Guid.NewGuid().ToString()),
+        //    new Claim("userId", user.Id) // Adding user ID as a claim if needed in token
+        //};
 
         //        authClaims.AddRange(userRoles.Select(role => new Claim(ClaimTypes.Role, role)));
 
+        //        // Generate the JWT token
         //        var token = new JwtSecurityToken(
         //            issuer: _configuration["Jwt:Issuer"],
         //            expires: DateTime.Now.AddMinutes(double.Parse(_configuration["Jwt:ExpiryMinutes"]!)),
         //            claims: authClaims,
-        //            signingCredentials: new SigningCredentials(new SymmetricSecurityKey(Encoding.UTF8.GetBytes(_configuration["Jwt:Key"]!)),
-        //            SecurityAlgorithms.HmacSha256));
+        //            signingCredentials: new SigningCredentials(
+        //                new SymmetricSecurityKey(Encoding.UTF8.GetBytes(_configuration["Jwt:Key"]!)),
+        //                SecurityAlgorithms.HmacSha256
+        //            )
+        //        );
 
-        //        return Ok(new { token = new JwtSecurityTokenHandler().WriteToken(token) });
+        //        return Ok(new
+        //        {
+        //            token = new JwtSecurityTokenHandler().WriteToken(token),
+        //            userId = user.Id // Include user ID in the response
+        //        });
         //    }
 
-        //    return Unauthorized();
+        //    return Unauthorized(new { message = "Invalid email or password." });
         //}
-        // --------------------------------------------------------------------------------------------
-        
+
+
         [HttpPost("login")]
         public async Task<IActionResult> Login([FromBody] Login model)
         {
@@ -127,7 +215,9 @@ namespace WebApiWithRoleAuthentication.Controllers
                 var authClaims = new List<Claim>
         {
             new Claim(JwtRegisteredClaimNames.Sub, user.Email!),
-            new Claim(JwtRegisteredClaimNames.Jti, Guid.NewGuid().ToString())
+            new Claim(JwtRegisteredClaimNames.Jti, Guid.NewGuid().ToString()),
+            new Claim("UserId", user.Id),
+            new Claim("UserName", user.UserName!)
         };
 
                 authClaims.AddRange(userRoles.Select(role => new Claim(ClaimTypes.Role, role)));
@@ -143,31 +233,44 @@ namespace WebApiWithRoleAuthentication.Controllers
                     )
                 );
 
-                return Ok(new { token = new JwtSecurityTokenHandler().WriteToken(token) });
+                return Ok(new
+                {
+                    token = new JwtSecurityTokenHandler().WriteToken(token),
+                    id = user.Id,
+                    userName = user.UserName
+                });
             }
 
             return Unauthorized(new { message = "Invalid email or password." });
         }
 
-        // --------------------------------------------------------------------------------------------
+
+
 
         //[HttpPost("login")]
         //public async Task<IActionResult> Login([FromBody] Login model)
         //{
-        //    // Find user by email instead of username
-        //    var user = await _userManager.FindByEmailAsync(model.Email); // Changed to FindByEmailAsync
+        //    // Find user by email
+        //    var user = await _userManager.FindByEmailAsync(model.Email);
         //    if (user != null && await _userManager.CheckPasswordAsync(user, model.Password))
         //    {
+        //        // Get the user's roles and check if they have the "Admin" role
         //        var userRoles = await _userManager.GetRolesAsync(user);
+        //        if (!userRoles.Contains("Admin"))
+        //        {
+        //            return Unauthorized(new { message = "Access denied. Only admins can log in." });
+        //        }
 
+        //        // Create claims for the JWT token
         //        var authClaims = new List<Claim>
         //{
-        //    new Claim(JwtRegisteredClaimNames.Sub, user.Email!), // Changed to user.Email
+        //    new Claim(JwtRegisteredClaimNames.Sub, user.Email!),
         //    new Claim(JwtRegisteredClaimNames.Jti, Guid.NewGuid().ToString())
         //};
 
         //        authClaims.AddRange(userRoles.Select(role => new Claim(ClaimTypes.Role, role)));
 
+        //        // Generate the JWT token
         //        var token = new JwtSecurityToken(
         //            issuer: _configuration["Jwt:Issuer"],
         //            expires: DateTime.Now.AddMinutes(double.Parse(_configuration["Jwt:ExpiryMinutes"]!)),
@@ -181,8 +284,10 @@ namespace WebApiWithRoleAuthentication.Controllers
         //        return Ok(new { token = new JwtSecurityTokenHandler().WriteToken(token) });
         //    }
 
-        //    return Unauthorized();
+        //    return Unauthorized(new { message = "Invalid email or password." });
         //}
+
+
 
 
 
