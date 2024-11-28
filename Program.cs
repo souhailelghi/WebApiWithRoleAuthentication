@@ -68,6 +68,7 @@ builder.Services.AddAuthorization(options =>
 {
     options.AddPolicy("AdminPolicy", policy => policy.RequireRole("Admin"));
     options.AddPolicy("UserPolicy", policy => policy.RequireRole("User"));
+    options.AddPolicy("SuperAdminPolicy", policy => policy.RequireRole("SuperAdmin"));
 });
 
 // Register the AuthService for handling login

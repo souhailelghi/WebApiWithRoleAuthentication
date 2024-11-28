@@ -29,54 +29,172 @@ namespace WebApiWithRoleAuthentication.Controllers
 
         }
 
-
-        [HttpGet("get-username/{id}")]
-        public async Task<IActionResult> GetUsernameById(string id)
+        [HttpPost("login")]
+        public async Task<IActionResult> Login([FromBody] Login model)
         {
-            var user = await _userManager.FindByIdAsync(id);
-            if (user == null)
+            // Find user by email
+            var user = await _userManager.FindByEmailAsync(model.Email);
+            if (user != null && await _userManager.CheckPasswordAsync(user, model.Password))
             {
-                return NotFound(new { Message = "User not found" });
+                // Get the user's roles
+                var userRoles = await _userManager.GetRolesAsync(user);
+
+                // Check if the user has a valid role (SuperAdmin or Admin)
+                if (!userRoles.Any(role => role == "SuperAdmin" || role == "Admin"))
+                {
+                    return Unauthorized(new { message = "Access denied. Only SuperAdmin or Admin can log in." });
+                }
+
+                // Create claims for the JWT token
+                var authClaims = new List<Claim>
+        {
+            new Claim(JwtRegisteredClaimNames.Sub, user.Email!),
+            new Claim(JwtRegisteredClaimNames.Jti, Guid.NewGuid().ToString()),
+            new Claim("UserId", user.Id),
+            new Claim("UserName", user.UserName!)
+        };
+
+                authClaims.AddRange(userRoles.Select(role => new Claim(ClaimTypes.Role, role)));
+
+                // Generate the JWT token
+                var token = new JwtSecurityToken(
+                    issuer: _configuration["Jwt:Issuer"],
+                    expires: DateTime.Now.AddMinutes(double.Parse(_configuration["Jwt:ExpiryMinutes"]!)),
+                    claims: authClaims,
+                    signingCredentials: new SigningCredentials(
+                        new SymmetricSecurityKey(Encoding.UTF8.GetBytes(_configuration["Jwt:Key"]!)),
+                        SecurityAlgorithms.HmacSha256
+                    )
+                );
+
+                // Define permissions based on roles
+                var permissions = userRoles.Contains("SuperAdmin")
+                    ? new[] { "Create", "Read", "Update", "Delete" }
+                    : new[] { "Read" };
+
+                return Ok(new
+                {
+                    token = new JwtSecurityTokenHandler().WriteToken(token),
+                    id = user.Id,
+                    userName = user.UserName,
+                    roles = userRoles,
+                    permissions
+                });
             }
-            return Ok(new { Username = user.UserName });
+
+            return Unauthorized(new { message = "Invalid email or password." });
         }
 
 
-        //[HttpPost("registerAdmin")]
-        //public async Task<IActionResult> RegisterAdmin([FromBody] Register model)
-        //{
-        //    // Check if the "Admin" role exists; create it if it doesn't
-        //    if (!await _roleManager.RoleExistsAsync("Admin"))
-        //    {
-        //        var roleResult = await _roleManager.CreateAsync(new IdentityRole("Admin"));
-        //        if (!roleResult.Succeeded)
-        //        {
-        //            return BadRequest(new { Message = "Failed to create 'Admin' role" });
-        //        }
-        //    }
 
-        //    // Create the new admin user
-        //    var adminUser = new IdentityUser { UserName = model.Username, Email = model.Email };
-        //    var result = await _userManager.CreateAsync(adminUser, model.Password);
 
-        //    if (result.Succeeded)
-        //    {
-        //        // Assign the "Admin" role to the user
-        //        var roleAssignResult = await _userManager.AddToRoleAsync(adminUser, "Admin");
-        //        if (!roleAssignResult.Succeeded)
-        //        {
-        //            return BadRequest(new { Message = "Failed to assign 'Admin' role" });
-        //        }
+        [HttpPost("loginSuperAdmin")]
+        //login superadmin :
+        public async Task<IActionResult> LoginSuperAdmin([FromBody] Login model)
+        {
+            // Find user by email
+            var user = await _userManager.FindByEmailAsync(model.Email);
+            if (user != null && await _userManager.CheckPasswordAsync(user, model.Password))
+            {
+                // Get the user's roles and check if they have the "SuperAdmin" role
+                var userRoles = await _userManager.GetRolesAsync(user);
+                if (!userRoles.Contains("SuperAdmin"))
+                {
+                    return Unauthorized(new { message = "Access denied. Only SuperAdmins can log in." });
+                }
 
-        //        // Optionally generate a JWT token for the new admin user
-        //        var token = await GenerateJwtToken(adminUser);
-        //        return Ok(new { Message = "Admin registered successfully", Token = token });
-        //    }
+                // Create claims for the JWT token
+                var authClaims = new List<Claim>
+        {
+            new Claim(JwtRegisteredClaimNames.Sub, user.Email!),
+            new Claim(JwtRegisteredClaimNames.Jti, Guid.NewGuid().ToString()),
+            new Claim("UserId", user.Id),
+            new Claim("UserName", user.UserName!)
+        };
 
-        //    return BadRequest(result.Errors);
-        //}
+                authClaims.AddRange(userRoles.Select(role => new Claim(ClaimTypes.Role, role)));
+
+                // Generate the JWT token
+                var token = new JwtSecurityToken(
+                    issuer: _configuration["Jwt:Issuer"],
+                    expires: DateTime.Now.AddMinutes(double.Parse(_configuration["Jwt:ExpiryMinutes"]!)),
+                    claims: authClaims,
+                    signingCredentials: new SigningCredentials(
+                        new SymmetricSecurityKey(Encoding.UTF8.GetBytes(_configuration["Jwt:Key"]!)),
+                        SecurityAlgorithms.HmacSha256
+                    )
+                );
+
+                return Ok(new
+                {
+                    token = new JwtSecurityTokenHandler().WriteToken(token),
+                    id = user.Id,
+                    userName = user.UserName
+                });
+            }
+
+            return Unauthorized(new { message = "Invalid email or password." });
+        }
+
+
+
+
+        // -------------
+
+     
+
+        
+        [HttpPost("loginAdmin")]
+        //login admin : 
+        public async Task<IActionResult> LoginAdmin([FromBody] Login model)
+        {
+            // Find user by email
+            var user = await _userManager.FindByEmailAsync(model.Email);
+            if (user != null && await _userManager.CheckPasswordAsync(user, model.Password))
+            {
+                // Get the user's roles and check if they have the "Admin" role
+                var userRoles = await _userManager.GetRolesAsync(user);
+                if (!userRoles.Contains("Admin"))
+                {
+                    return Unauthorized(new { message = "Access denied. Only admins can log in." });
+                }
+
+                // Create claims for the JWT token
+                var authClaims = new List<Claim>
+        {
+            new Claim(JwtRegisteredClaimNames.Sub, user.Email!),
+            new Claim(JwtRegisteredClaimNames.Jti, Guid.NewGuid().ToString()),
+            new Claim("UserId", user.Id),
+            new Claim("UserName", user.UserName!)
+        };
+
+                authClaims.AddRange(userRoles.Select(role => new Claim(ClaimTypes.Role, role)));
+
+                // Generate the JWT token
+                var token = new JwtSecurityToken(
+                    issuer: _configuration["Jwt:Issuer"],
+                    expires: DateTime.Now.AddMinutes(double.Parse(_configuration["Jwt:ExpiryMinutes"]!)),
+                    claims: authClaims,
+                    signingCredentials: new SigningCredentials(
+                        new SymmetricSecurityKey(Encoding.UTF8.GetBytes(_configuration["Jwt:Key"]!)),
+                        SecurityAlgorithms.HmacSha256
+                    )
+                );
+
+                return Ok(new
+                {
+                    token = new JwtSecurityTokenHandler().WriteToken(token),
+                    id = user.Id,
+                    userName = user.UserName
+                });
+            }
+
+            return Unauthorized(new { message = "Invalid email or password." });
+        }
+
 
         [HttpPost("registerAdmin")]
+        //register admin :
         public async Task<IActionResult> RegisterAdmin([FromBody] Register model)
         {
             // Check if the "Admin" role exists; create it if it doesn't
@@ -135,94 +253,44 @@ namespace WebApiWithRoleAuthentication.Controllers
         }
 
 
-        [HttpPost("register")]
-        public async Task<IActionResult> Register([FromBody] Register model)
+        [HttpPost("registerSuperAdmin")]
+        //register super admin :
+        public async Task<IActionResult> RegisterSuperAdmin([FromBody] Register model)
         {
-            var user = new IdentityUser { UserName = model.Username, Email = model.Email };
-            var result = await _userManager.CreateAsync(user, model.Password);
+            // Check if the "SuperAdmin" role exists; create it if it doesn't
+            if (!await _roleManager.RoleExistsAsync("SuperAdmin"))
+            {
+                var roleResult = await _roleManager.CreateAsync(new IdentityRole("SuperAdmin"));
+                if (!roleResult.Succeeded)
+                {
+                    return BadRequest(new { Message = "Failed to create 'SuperAdmin' role" });
+                }
+            }
+
+            // Create the new SuperAdmin user
+            var superAdminUser = new IdentityUser { UserName = model.Username, Email = model.Email };
+            var result = await _userManager.CreateAsync(superAdminUser, model.Password);
 
             if (result.Succeeded)
             {
-                // Optionally add to a role if needed
-                // await _userManager.AddToRoleAsync(user, "User");
-                return Ok(new { message = "User registered successfully" });
-            }
-
-            return BadRequest(result.Errors);
-        }
-
-        //[HttpPost("login")]
-        //public async Task<IActionResult> Login([FromBody] Login model)
-        //{
-        //    // Find user by email
-        //    var user = await _userManager.FindByEmailAsync(model.Email);
-        //    if (user != null && await _userManager.CheckPasswordAsync(user, model.Password))
-        //    {
-        //        // Get the user's roles and check if they have the "Admin" role
-        //        var userRoles = await _userManager.GetRolesAsync(user);
-        //        if (!userRoles.Contains("Admin"))
-        //        {
-        //            return Unauthorized(new { message = "Access denied. Only admins can log in." });
-        //        }
-
-        //        // Create claims for the JWT token
-        //        var authClaims = new List<Claim>
-        //{
-        //    new Claim(JwtRegisteredClaimNames.Sub, user.Email!),
-        //    new Claim(JwtRegisteredClaimNames.Jti, Guid.NewGuid().ToString()),
-        //    new Claim("userId", user.Id) // Adding user ID as a claim if needed in token
-        //};
-
-        //        authClaims.AddRange(userRoles.Select(role => new Claim(ClaimTypes.Role, role)));
-
-        //        // Generate the JWT token
-        //        var token = new JwtSecurityToken(
-        //            issuer: _configuration["Jwt:Issuer"],
-        //            expires: DateTime.Now.AddMinutes(double.Parse(_configuration["Jwt:ExpiryMinutes"]!)),
-        //            claims: authClaims,
-        //            signingCredentials: new SigningCredentials(
-        //                new SymmetricSecurityKey(Encoding.UTF8.GetBytes(_configuration["Jwt:Key"]!)),
-        //                SecurityAlgorithms.HmacSha256
-        //            )
-        //        );
-
-        //        return Ok(new
-        //        {
-        //            token = new JwtSecurityTokenHandler().WriteToken(token),
-        //            userId = user.Id // Include user ID in the response
-        //        });
-        //    }
-
-        //    return Unauthorized(new { message = "Invalid email or password." });
-        //}
-
-
-        [HttpPost("login")]
-        public async Task<IActionResult> Login([FromBody] Login model)
-        {
-            // Find user by email
-            var user = await _userManager.FindByEmailAsync(model.Email);
-            if (user != null && await _userManager.CheckPasswordAsync(user, model.Password))
-            {
-                // Get the user's roles and check if they have the "Admin" role
-                var userRoles = await _userManager.GetRolesAsync(user);
-                if (!userRoles.Contains("Admin"))
+                // Assign the "SuperAdmin" role to the user
+                var roleAssignResult = await _userManager.AddToRoleAsync(superAdminUser, "SuperAdmin");
+                if (!roleAssignResult.Succeeded)
                 {
-                    return Unauthorized(new { message = "Access denied. Only admins can log in." });
+                    return BadRequest(new { Message = "Failed to assign 'SuperAdmin' role" });
                 }
 
-                // Create claims for the JWT token
+                // Generate claims and a JWT token for the new SuperAdmin user
                 var authClaims = new List<Claim>
         {
-            new Claim(JwtRegisteredClaimNames.Sub, user.Email!),
+            new Claim(JwtRegisteredClaimNames.Sub, superAdminUser.Email!),
             new Claim(JwtRegisteredClaimNames.Jti, Guid.NewGuid().ToString()),
-            new Claim("UserId", user.Id),
-            new Claim("UserName", user.UserName!)
+            new Claim(ClaimTypes.Name, superAdminUser.UserName!),
+            new Claim("UserId", superAdminUser.Id)
         };
 
-                authClaims.AddRange(userRoles.Select(role => new Claim(ClaimTypes.Role, role)));
+                authClaims.Add(new Claim(ClaimTypes.Role, "SuperAdmin"));
 
-                // Generate the JWT token
                 var token = new JwtSecurityToken(
                     issuer: _configuration["Jwt:Issuer"],
                     expires: DateTime.Now.AddMinutes(double.Parse(_configuration["Jwt:ExpiryMinutes"]!)),
@@ -235,57 +303,15 @@ namespace WebApiWithRoleAuthentication.Controllers
 
                 return Ok(new
                 {
-                    token = new JwtSecurityTokenHandler().WriteToken(token),
-                    id = user.Id,
-                    userName = user.UserName
+                    Message = "SuperAdmin registered successfully",
+                    Token = new JwtSecurityTokenHandler().WriteToken(token),
+                    UserName = superAdminUser.UserName
                 });
             }
 
-            return Unauthorized(new { message = "Invalid email or password." });
+            return BadRequest(result.Errors);
         }
 
-
-
-
-        //[HttpPost("login")]
-        //public async Task<IActionResult> Login([FromBody] Login model)
-        //{
-        //    // Find user by email
-        //    var user = await _userManager.FindByEmailAsync(model.Email);
-        //    if (user != null && await _userManager.CheckPasswordAsync(user, model.Password))
-        //    {
-        //        // Get the user's roles and check if they have the "Admin" role
-        //        var userRoles = await _userManager.GetRolesAsync(user);
-        //        if (!userRoles.Contains("Admin"))
-        //        {
-        //            return Unauthorized(new { message = "Access denied. Only admins can log in." });
-        //        }
-
-        //        // Create claims for the JWT token
-        //        var authClaims = new List<Claim>
-        //{
-        //    new Claim(JwtRegisteredClaimNames.Sub, user.Email!),
-        //    new Claim(JwtRegisteredClaimNames.Jti, Guid.NewGuid().ToString())
-        //};
-
-        //        authClaims.AddRange(userRoles.Select(role => new Claim(ClaimTypes.Role, role)));
-
-        //        // Generate the JWT token
-        //        var token = new JwtSecurityToken(
-        //            issuer: _configuration["Jwt:Issuer"],
-        //            expires: DateTime.Now.AddMinutes(double.Parse(_configuration["Jwt:ExpiryMinutes"]!)),
-        //            claims: authClaims,
-        //            signingCredentials: new SigningCredentials(
-        //                new SymmetricSecurityKey(Encoding.UTF8.GetBytes(_configuration["Jwt:Key"]!)),
-        //                SecurityAlgorithms.HmacSha256
-        //            )
-        //        );
-
-        //        return Ok(new { token = new JwtSecurityTokenHandler().WriteToken(token) });
-        //    }
-
-        //    return Unauthorized(new { message = "Invalid email or password." });
-        //}
 
 
 
@@ -361,7 +387,23 @@ namespace WebApiWithRoleAuthentication.Controllers
             return BadRequest(new { Message = "Invalid email or password in StudentService." });
         }
 
- 
+        [HttpPost("register")]
+        public async Task<IActionResult> Register([FromBody] Register model)
+        {
+            var user = new IdentityUser { UserName = model.Username, Email = model.Email };
+            var result = await _userManager.CreateAsync(user, model.Password);
+
+            if (result.Succeeded)
+            {
+                // Optionally add to a role if needed
+                // await _userManager.AddToRoleAsync(user, "User");
+                return Ok(new { message = "User registered successfully" });
+            }
+
+            return BadRequest(result.Errors);
+        }
+
+
 
         // Helper method to generate the JWT token
         private async Task<string> GenerateJwtToken(IdentityUser user)
@@ -436,7 +478,19 @@ namespace WebApiWithRoleAuthentication.Controllers
         }
 
 
-    
+        [HttpGet("get-username/{id}")]
+        public async Task<IActionResult> GetUsernameById(string id)
+        {
+            var user = await _userManager.FindByIdAsync(id);
+            if (user == null)
+            {
+                return NotFound(new { Message = "User not found" });
+            }
+            return Ok(new { Username = user.UserName });
+        }
+
+
+
 
     }
 }
